@@ -1,0 +1,30 @@
+# YTAi — Requirements
+# Python 3.10–3.12  |  FFmpeg must be installed on the system PATH
+
+# ── UI ───────────────────────────────────────────────────────────────────────
+streamlit>=1.62,<2.0
+
+# ── AI / APIs ────────────────────────────────────────────────────────────────
+groq>=1.7,<2.0                      # Groq API: PlayAI TTS + Whisper + LLM
+openai-whisper>=20250625             # Local fallback transcription (offline)
+torch>=2.0,<3.0                     # Required by openai-whisper
+
+# ── HTTP / Stock media ───────────────────────────────────────────────────────
+requests>=2.31,<3.0                 # Pexels API + video clip downloads
+
+# ── Video processing ─────────────────────────────────────────────────────────
+moviepy>=2.1,<3.0                   # Clip assembly, audio compositing
+imageio>=2.37,<3.0                  # moviepy frame I/O backend
+imageio-ffmpeg>=0.5,<1.0           # FFmpeg binary bridge
+ffmpeg-python>=0.2,<1.0            # FFmpeg subprocess helpers
+opencv-python-headless>=4.8,<5.0   # Per-frame filter + caption rendering
+
+# ── Audio processing ─────────────────────────────────────────────────────────
+pydub>=0.25,<1.0                    # Silence detection, audio ducking
+
+# ── Image / Caption rendering ────────────────────────────────────────────────
+Pillow>=10.0,<12.0                  # PIL: word-highlight caption frames
+
+# ── Data ─────────────────────────────────────────────────────────────────────
+numpy>=1.26,<3.0
+pandas>=2.0,<4.0
