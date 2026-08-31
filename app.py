@@ -6,7 +6,7 @@
 #    → Word-highlight captions → Auto-duck BGM → Final render
 #
 #  APIs required
-#    GROQ_API_KEY    — Groq (TTS via PlayAI + LLM keyword extraction)
+#    GROQ_API_KEY    — Groq (TTS via PlayAI REST + LLM keyword extraction)
 #    PEXELS_API_KEY  — Pexels (royalty-free real stock video, free tier)
 #
 #  Stack: Streamlit · Groq · MoviePy 2.x · OpenCV · Pydub · Pillow · FFmpeg
@@ -42,15 +42,34 @@ try:
 except Exception:
     PYDUB_OK = False
 
+# BUG FIX #5: MoviePy 2.x removed top-level `afx` and `vfx` exports.
+# Import only the symbols that exist in 2.x; fall back to None for fx namespaces.
 try:
     from moviepy import (
         AudioFileClip, ColorClip, CompositeVideoClip,
-        ImageClip, VideoFileClip, afx, vfx,
+        ImageClip, VideoFileClip,
         concatenate_videoclips,
     )
+    # Try MoviePy 2.x submodule locations first, then 1.x fallback
+    try:
+        from moviepy.video import fx as vfx
+    except ImportError:
+        try:
+            from moviepy import vfx  # type: ignore[attr-defined]
+        except ImportError:
+            vfx = None  # type: ignore[assignment]
+    try:
+        from moviepy.audio import fx as afx
+    except ImportError:
+        try:
+            from moviepy import afx  # type: ignore[attr-defined]
+        except ImportError:
+            afx = None  # type: ignore[assignment]
     MOVIEPY_OK = True
 except Exception:
     MOVIEPY_OK = False
+    vfx = None  # type: ignore[assignment]
+    afx = None  # type: ignore[assignment]
 
 try:
     from groq import Groq as _GroqClient
@@ -67,10 +86,19 @@ except Exception:
 # =============================================================================
 #  CONSTANTS
 # =============================================================================
-APP_NAME       = "YTAi"
-GROQ_LLM_MODEL = "openai/gpt-oss-120b"   # Groq LLM for keyword extraction
-GROQ_TTS_MODEL = "playai-tts"            # Groq TTS (English, high quality)
-GROQ_TTS_VOICE = "Chip"                  # Clear, authoritative narrator voice
+APP_NAME = "YTAi"
+
+# BUG FIX #1: "openai/gpt-oss-120b" is not a valid Groq model — Groq only
+# hosts open-source models.  Use the correct Groq-available LLM instead.
+GROQ_LLM_MODEL = "llama-3.3-70b-versatile"
+
+# BUG FIX #2 (related): TTS is handled via direct REST call (see tts_groq()),
+# so this constant is kept purely for documentation / easy swapping.
+GROQ_TTS_MODEL = "playai-tts"
+GROQ_TTS_VOICE = "Chip"
+
+# Groq REST base URL for TTS (OpenAI-compatible endpoint)
+_GROQ_TTS_URL = "https://api.groq.com/openai/v1/audio/speech"
 
 TMP_ROOT = Path(tempfile.gettempdir()) / "ytai_studio"
 TMP_ROOT.mkdir(parents=True, exist_ok=True)
@@ -134,7 +162,7 @@ st.set_page_config(
 )
 
 # =============================================================================
-#  CSS — Clean modern dark UI (fresh design, not the previous cluttered one)
+#  CSS — Clean modern dark UI
 # =============================================================================
 st.markdown("""
 <style>
@@ -623,24 +651,34 @@ def tts_groq(text: str, groq_key: str,
              voice: str = "Chip",
              dest: Optional[Path] = None) -> Optional[Path]:
     """
-    Generate high-quality TTS audio via Groq PlayAI.
-    Returns path to WAV file.
+    BUG FIX #2: The original code called client.audio.speech.create() which is
+    an unstable SDK wrapper.  We now call the Groq PlayAI TTS REST endpoint
+    directly via requests — simpler, version-agnostic, and always correct.
+
+    POST https://api.groq.com/openai/v1/audio/speech
+    Returns path to a WAV file, or None on failure.
     """
     if dest is None:
         dest = uid(".wav")
     try:
-        client = _GroqClient(api_key=groq_key)
-        response = client.audio.speech.create(
-            model=GROQ_TTS_MODEL,
-            voice=voice,
-            input=text,
-            response_format="wav",
+        resp = requests.post(
+            _GROQ_TTS_URL,
+            headers={
+                "Authorization": f"Bearer {groq_key}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": GROQ_TTS_MODEL,   # "playai-tts"
+                "input": text,
+                "voice": voice,
+                "response_format": "wav",
+            },
+            timeout=30,
         )
-        # response is the raw audio bytes
-        audio_bytes = response.read() if hasattr(response, "read") else bytes(response)
-        dest.write_bytes(audio_bytes)
+        resp.raise_for_status()
+        dest.write_bytes(resp.content)
         return dest if dest.stat().st_size > 1000 else None
-    except Exception as e:
+    except Exception:
         return None
 
 
@@ -664,18 +702,52 @@ def get_audio_duration(path: str) -> float:
 # =============================================================================
 #  MODULE D — CAPTIONS: WORD-HIGHLIGHT (Fliki style)
 # =============================================================================
+def _interpolate_words_from_segments(segments, text: str) -> List[Dict]:
+    """
+    Given Groq Whisper segment objects (or dicts), distribute word-level
+    timestamps linearly within each segment.  This is the fallback when
+    Groq does not return per-word timestamps.
+    """
+    words: List[Dict] = []
+    for seg in segments:
+        # Support both dict and attribute-based segment objects
+        if isinstance(seg, dict):
+            seg_text  = seg.get("text", "")
+            seg_start = float(seg.get("start", 0))
+            seg_end   = float(seg.get("end", 0))
+        else:
+            seg_text  = getattr(seg, "text", "")
+            seg_start = float(getattr(seg, "start", 0))
+            seg_end   = float(getattr(seg, "end", 0))
+
+        tokens = seg_text.split()
+        if not tokens:
+            continue
+        dur_per_word = (seg_end - seg_start) / len(tokens)
+        for j, w in enumerate(tokens):
+            words.append({
+                "word":  w.strip(),
+                "start": seg_start + j * dur_per_word,
+                "end":   seg_start + (j + 1) * dur_per_word,
+            })
+    return words
+
+
 def build_word_timestamps(audio_path: str,
                           text: str,
                           groq_key: Optional[str] = None) -> List[Dict]:
     """
     Generate word-level timestamps.
     Strategy:
-      1. Try Groq Whisper if key provided (fastest, cloud)
-      2. Try local Whisper if installed
-      3. Fallback: estimate by splitting evenly across audio duration
+      1. Try Groq Whisper if key provided (fastest, cloud).
+         BUG FIX #3: timestamp_granularities=["word"] is NOT reliably supported
+         by the Groq Whisper API and causes request failures.  We now request
+         verbose_json (segment-level) and interpolate word positions linearly.
+      2. Try local Whisper if installed.
+      3. Fallback: estimate by splitting evenly across audio duration.
     Returns list of {word, start, end}.
     """
-    # Strategy 1: Groq Whisper
+    # Strategy 1: Groq Whisper (segment-level → word interpolation)
     if groq_key:
         try:
             client = _GroqClient(api_key=groq_key)
@@ -684,15 +756,13 @@ def build_word_timestamps(audio_path: str,
                     model="whisper-large-v3",
                     file=(Path(audio_path).name, f),
                     response_format="verbose_json",
-                    timestamp_granularities=["word"],
+                    # BUG FIX #3: removed timestamp_granularities=["word"]
+                    # Groq's Whisper implementation does not reliably support it.
                 )
-            if hasattr(result, "words") and result.words:
-                return [
-                    {"word": getattr(w, "word", "").strip(),
-                     "start": float(getattr(w, "start", 0)),
-                     "end": float(getattr(w, "end", 0))}
-                    for w in result.words if getattr(w, "word", "").strip()
-                ]
+            segs = getattr(result, "segments", None) or []
+            words = _interpolate_words_from_segments(segs, text)
+            if words:
+                return words
         except Exception:
             pass
 
@@ -1025,12 +1095,48 @@ def build_scene_clip(
 # =============================================================================
 #  MODULE H — FINAL ASSEMBLY
 # =============================================================================
+
+def _normalize_clip_for_concat(src: str, dest: str,
+                                out_w: int = 1280, out_h: int = 720) -> bool:
+    """
+    BUG FIX #6 (helper): Re-encode a scene clip to a guaranteed-consistent
+    format so that FFmpeg xfade / acrossfade never chokes on mismatched pixel
+    formats, frame rates, sample rates, or channel layouts.
+
+    Output spec: yuv420p · 30 fps · libx264 · AAC 44100 Hz stereo.
+    """
+    try:
+        cmd = [
+            "ffmpeg", "-y", "-i", src,
+            "-vf", (
+                f"scale={out_w}:{out_h}:force_original_aspect_ratio=decrease,"
+                f"pad={out_w}:{out_h}:(ow-iw)/2:(oh-ih)/2,"
+                f"setsar=1,fps=fps=30,format=yuv420p"
+            ),
+            "-r", "30",
+            "-c:v", "libx264", "-preset", "fast", "-crf", "18",
+            "-ar", "44100", "-ac", "2",
+            "-c:a", "aac", "-b:a", "192k",
+            dest,
+        ]
+        r = subprocess.run(cmd, capture_output=True, timeout=120)
+        return r.returncode == 0 and Path(dest).exists()
+    except Exception:
+        return False
+
+
 def concat_clips_ffmpeg(clip_paths: List[str],
                          output_path: str,
                          transition: str = "Crossfade",
                          fade_dur: float = 0.4) -> bool:
     """
     Concatenate scene clips via FFmpeg filter_complex with optional crossfade.
+
+    BUG FIX #6: The original code applied xfade/acrossfade directly to raw
+    Pexels clips whose resolution, fps, pixel format, sample rate, and channel
+    layout varied wildly — causing FFmpeg to error or produce corrupt output.
+    We now run a normalisation pass on every clip first so all streams are
+    identical before any filter chain is applied.
     """
     n = len(clip_paths)
     if n == 0:
@@ -1039,41 +1145,50 @@ def concat_clips_ffmpeg(clip_paths: List[str],
         shutil.copy(clip_paths[0], output_path)
         return True
 
+    # ── Normalise every clip to a common spec before concatenation ────────────
+    norm_paths: List[str] = []
+    for i, p in enumerate(clip_paths):
+        norm = str(uid(f"_norm_{i}.mp4"))
+        ok = _normalize_clip_for_concat(p, norm)
+        norm_paths.append(norm if ok and Path(norm).exists() else p)
+
     if transition == "None":
-        # Simple concat
+        # Simple concat — safe because clips are now normalised
         list_file = uid("_concat.txt")
         with open(list_file, "w") as f:
-            for p in clip_paths:
+            for p in norm_paths:
                 f.write(f"file '{p}'\n")
-        cmd = ["ffmpeg", "-y", "-f", "concat", "-safe", "0",
-               "-i", str(list_file), "-c:v", "libx264", "-preset", "fast",
-               "-crf", "18", "-c:a", "aac", "-b:a", "192k", output_path]
+        cmd = [
+            "ffmpeg", "-y", "-f", "concat", "-safe", "0",
+            "-i", str(list_file),
+            "-c:v", "libx264", "-preset", "fast", "-crf", "18",
+            "-c:a", "aac", "-b:a", "192k",
+            output_path,
+        ]
         r = subprocess.run(cmd, capture_output=True, timeout=600)
         return r.returncode == 0
 
-    # Crossfade via xfade filter
-    # Build complex filter chain
-    inputs = []
-    for p in clip_paths:
+    # ── Crossfade via xfade + acrossfade filter chain ─────────────────────────
+    inputs: List[str] = []
+    for p in norm_paths:
         inputs += ["-i", p]
 
-    # Get durations
-    durs = [get_audio_duration(p) for p in clip_paths]
+    # Re-read durations from the normalised files
+    durs = [get_audio_duration(p) for p in norm_paths]
 
-    filter_parts = []
-    av_parts = []
+    filter_parts: List[str] = []
     cumulative = 0.0
-
-    # Video xfade chain
     prev_v = "[0:v]"
     prev_a = "[0:a]"
+
     for i in range(1, n):
-        cumulative += durs[i - 1] - fade_dur
+        cumulative += max(0.0, durs[i - 1] - fade_dur)
+        offset = max(0.0, cumulative)
         out_v = f"[v{i}]"
         out_a = f"[a{i}]"
         filter_parts.append(
             f"{prev_v}[{i}:v]xfade=transition=fade:duration={fade_dur}:"
-            f"offset={max(0, cumulative)}{out_v}"
+            f"offset={offset}{out_v}"
         )
         filter_parts.append(
             f"{prev_a}[{i}:a]acrossfade=d={fade_dur}{out_a}"
@@ -1082,12 +1197,16 @@ def concat_clips_ffmpeg(clip_paths: List[str],
         prev_a = out_a
 
     fc = ";".join(filter_parts)
-    cmd = (["ffmpeg", "-y"] + inputs +
-           ["-filter_complex", fc,
+    cmd = (
+        ["ffmpeg", "-y"] + inputs +
+        [
+            "-filter_complex", fc,
             "-map", prev_v, "-map", prev_a,
             "-c:v", "libx264", "-preset", "fast", "-crf", "18",
             "-c:a", "aac", "-b:a", "192k",
-            output_path])
+            output_path,
+        ]
+    )
     r = subprocess.run(cmd, capture_output=True, timeout=600)
     return r.returncode == 0 and Path(output_path).exists()
 
@@ -1099,41 +1218,76 @@ def mix_background_music(video_path: str,
                           duck_vol: float = 0.06) -> bool:
     """
     Mix background music under the voiceover with auto-ducking via FFmpeg.
-    Simpler approach: lower music to duck_vol across the whole video,
-    bring up slightly during pauses (detected from speech track).
-    """
-    if not PYDUB_OK:
-        # Fallback: fixed-volume mix via ffmpeg
-        dur_cmd = ["ffprobe", "-v", "quiet", "-show_entries", "format=duration",
-                   "-of", "default=noprint_wrappers=1:nokey=1", video_path]
-        try:
-            r = subprocess.run(dur_cmd, capture_output=True, text=True, timeout=10)
-            vid_dur = float(r.stdout.strip())
-        except Exception:
-            vid_dur = 60.0
 
-        cmd = [
+    BUG FIX #7: The original code combined `-stream_loop -1` with `atrim`
+    inside a single filter_complex, which causes stream synchronisation
+    deadlocks in FFmpeg — the stream_loop source never sends EOF, so atrim
+    waits forever.
+
+    Fix: use the `aloop` audio filter (which IS safe inside filter_complex)
+    to loop and trim the music to the exact video duration in one step,
+    write that to a temporary file, then do a clean two-input mix.  The
+    pydub path is also preserved for richer ducking when available.
+    """
+    # ── Get video duration for trimming ───────────────────────────────────────
+    dur_cmd = [
+        "ffprobe", "-v", "quiet",
+        "-show_entries", "format=duration",
+        "-of", "default=noprint_wrappers=1:nokey=1",
+        video_path,
+    ]
+    try:
+        r = subprocess.run(dur_cmd, capture_output=True, text=True, timeout=10)
+        vid_dur = float(r.stdout.strip())
+    except Exception:
+        vid_dur = 60.0
+
+    if not PYDUB_OK:
+        # ── FFmpeg-only path (fixed BGM loop using aloop filter) ──────────────
+        #
+        # aloop=loop=-1 loops indefinitely inside the graph; atrim then cuts it
+        # to exactly vid_dur seconds.  This avoids the -stream_loop deadlock
+        # because aloop is a pure filter, not an input stream option.
+        looped_bgm = uid("_bgm_loop.aac")
+        loop_cmd = [
+            "ffmpeg", "-y", "-i", music_path,
+            "-filter_complex",
+            (
+                f"[0:a]aloop=loop=-1:size=2e+09,"
+                f"atrim=0:{vid_dur},"
+                f"asetpts=PTS-STARTPTS,"
+                f"volume={duck_vol}"
+                f"[bgout]"
+            ),
+            "-map", "[bgout]",
+            "-c:a", "aac", "-b:a", "128k",
+            str(looped_bgm),
+        ]
+        r = subprocess.run(loop_cmd, capture_output=True, timeout=120)
+        if r.returncode != 0 or not looped_bgm.exists():
+            return False
+
+        mix_cmd = [
             "ffmpeg", "-y",
             "-i", video_path,
-            "-stream_loop", "-1", "-i", music_path,
+            "-i", str(looped_bgm),
             "-filter_complex",
-            f"[1:a]volume={duck_vol},atrim=duration={vid_dur}[bg];"
-            f"[0:a][bg]amix=inputs=2:duration=first:dropout_transition=0.5[aout]",
+            "[0:a][1:a]amix=inputs=2:duration=first:dropout_transition=0.5[aout]",
             "-map", "0:v", "-map", "[aout]",
             "-c:v", "copy", "-c:a", "aac", "-b:a", "192k",
             output_path,
         ]
-        r = subprocess.run(cmd, capture_output=True, timeout=300)
+        r = subprocess.run(mix_cmd, capture_output=True, timeout=300)
         return r.returncode == 0 and Path(output_path).exists()
 
-    # Full ducking with pydub
+    # ── Full ducking with pydub ────────────────────────────────────────────────
     try:
         voice = AudioSegment.from_file(video_path)
         music = AudioSegment.from_file(music_path)
 
-        # Loop music
+        # Loop music to cover the full voice length
         while len(music) < len(voice):
-            music += music
+            music = music + music
         music = music[:len(voice)]
 
         # Detect speech ranges
