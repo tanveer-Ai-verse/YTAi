@@ -5,12 +5,13 @@
 streamlit>=1.62,<2.0
 
 # ── AI / APIs ────────────────────────────────────────────────────────────────
-groq>=1.7,<2.0                      # Groq API: PlayAI TTS + Whisper + LLM
-openai-whisper>=20250625             # Local fallback transcription (offline)
+groq>=1.7,<2.0                      # Groq API: LLM keyword extraction + Whisper
+# BUG FIX: was >=20250625 (nonexistent future release). Pinned to last stable.
+openai-whisper>=20231117            # Local fallback transcription (offline)
 torch>=2.0,<3.0                     # Required by openai-whisper
 
 # ── HTTP / Stock media ───────────────────────────────────────────────────────
-requests>=2.31,<3.0                 # Pexels API + video clip downloads
+requests>=2.31,<3.0                 # Pexels API + video clip downloads + Groq TTS REST
 
 # ── Video processing ─────────────────────────────────────────────────────────
 moviepy>=2.1,<3.0                   # Clip assembly, audio compositing
