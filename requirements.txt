@@ -1,31 +1,37 @@
-# YTAi — Requirements
-# Python 3.10–3.12  |  FFmpeg must be installed on the system PATH
+# YTAi — Production Requirements
+# Python 3.10–3.12 | FFmpeg must be installed on the system PATH
 
-# ── UI ───────────────────────────────────────────────────────────────────────
+# ── Core UI ──────────────────────────────────────────────────────────────────
 streamlit>=1.62,<2.0
 
-# ── AI / APIs ────────────────────────────────────────────────────────────────
-groq>=1.7,<2.0                      # Groq API: LLM keyword extraction + Whisper
-# BUG FIX: was >=20250625 (nonexistent future release). Pinned to last stable.
-openai-whisper>=20231117            # Local fallback transcription (offline)
+# ── AI / APIs ─────────────────────────────────────────────────────────────────
+groq>=1.7,<2.0                      # Groq SDK: llama-3.3-70b-versatile LLM +
+                                     # playai-tts TTS + whisper-large-v3 STT
+# FIX (Bug 4): 20250625 is a real release but pins a future date unnecessarily.
+# >=20231117 resolves to the latest available (currently 20250625) on fresh installs
+# while remaining resolvable on all pip versions without future-date confusion.
+openai-whisper>=20231117             # Local Whisper fallback (offline transcription)
 torch>=2.0,<3.0                     # Required by openai-whisper
 
-# ── HTTP / Stock media ───────────────────────────────────────────────────────
-requests>=2.31,<3.0                 # Pexels API + video clip downloads + Groq TTS REST
+# ── HTTP / Stock Media ────────────────────────────────────────────────────────
+requests>=2.31,<3.0                 # Pexels API searches + video clip downloads
 
-# ── Video processing ─────────────────────────────────────────────────────────
-moviepy>=2.1,<3.0                   # Clip assembly, audio compositing
+# ── Video Processing ──────────────────────────────────────────────────────────
+# FIX (Bug 5): MoviePy 2.x — "from moviepy import afx, vfx" works correctly.
+# Explicit sub-package paths (moviepy.audio.fx, moviepy.video.fx) included
+# as defensive fallback imports in app.py for forward compatibility.
+moviepy>=2.1,<3.0
 imageio>=2.37,<3.0                  # moviepy frame I/O backend
-imageio-ffmpeg>=0.5,<1.0           # FFmpeg binary bridge
+imageio-ffmpeg>=0.5,<1.0           # FFmpeg binary bridge for imageio
 ffmpeg-python>=0.2,<1.0            # FFmpeg subprocess helpers
-opencv-python-headless>=4.8,<5.0   # Per-frame filter + caption rendering
+opencv-python-headless>=4.8,<5.0   # Per-frame colour filters + caption rendering
 
-# ── Audio processing ─────────────────────────────────────────────────────────
-pydub>=0.25,<1.0                    # Silence detection, audio ducking
+# ── Audio Processing ──────────────────────────────────────────────────────────
+pydub>=0.25,<1.0                    # Silence detection for BGM auto-ducking
 
-# ── Image / Caption rendering ────────────────────────────────────────────────
-Pillow>=10.0,<12.0                  # PIL: word-highlight caption frames
+# ── Image / Caption Rendering ─────────────────────────────────────────────────
+Pillow>=10.0,<12.0                  # PIL word-highlight caption frame renderer
 
-# ── Data ─────────────────────────────────────────────────────────────────────
+# ── Data ──────────────────────────────────────────────────────────────────────
 numpy>=1.26,<3.0
 pandas>=2.0,<4.0
