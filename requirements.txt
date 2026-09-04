@@ -1,32 +1,19 @@
-# ──────────────────────────────────────────────────────────────
-# ShortsCraft AI — Python dependencies
-# Python 3.10+ required
-# FFmpeg must be installed at the system level (see README.md)
-# ──────────────────────────────────────────────────────────────
+# Streamlit UI
+streamlit
 
-# ── Streamlit UI ──
-streamlit>=1.35.0,<2.0.0
+# Groq AI
+groq
 
-# ── Groq AI (Whisper + Llama) ──
-groq>=0.9.0,<2.0.0
+# YouTube Downloader
+yt-dlp
 
-# ── YouTube downloader ──
-yt-dlp>=2024.5.1
+# Video & Audio processing
+moviepy
+ffmpeg-python
+pydub
 
-# ── Video processing ──
-moviepy>=1.0.3,<2.0.0
-ffmpeg-python>=0.2.0,<1.0.0
-
-# ── Audio processing ──
-pydub>=0.25.1,<1.0.0
-
-# ── Subtitle parsing (utility) ──
-pysrt>=1.1.2,<2.0.0
-
-# ── HTTP / network (pinned transitive deps for stability) ──
-requests>=2.31.0,<3.0.0
-urllib3>=1.26.0,<3.0.0
-
-# ── Standard utility ──
-Pillow>=10.0.0,<11.0.0
-numpy>=1.24.0,<2.0.0
+# Subtitles & Utilities
+pysrt
+requests
+Pillow
+numpy
