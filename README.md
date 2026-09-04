@@ -1,231 +1,243 @@
-# 🎬 YTAi — Script-to-YouTube Video in One Click
+# 🎬 ShortsCraft AI
 
-> Your own Fliki.ai — no watermark, no subscription, no limits.
+> **Transform any YouTube video into viral 9:16 Shorts — powered by Groq AI (100% free models)**
 
-YTAi takes a plain narration script and produces a ready-to-upload YouTube video:
-it fetches **real, royalty-free stock clips** from Pexels that match each sentence,
-generates a **premium AI voiceover** via Groq PlayAI TTS, burns **animated word-highlight
-captions** (exactly like the Fliki.ai reference style), auto-ducks background music during
-speech, and exports a clean MP4 + SRT subtitle file.
+ShortsCraft AI is a production-ready Streamlit application that:
+1. Downloads a YouTube video via `yt-dlp`
+2. Transcribes audio using **Groq Whisper** (`whisper-large-v3-turbo`)
+3. Detects the top 10 best clip moments using **Groq Llama** (`llama-3.3-70b-versatile`)
+4. Auto-crops each clip to 9:16 vertical format
+5. Burns dynamic captions and optional sound effects onto each clip
+6. Delivers production-ready MP4 files ready for YouTube Shorts, Reels, and TikTok
 
 ---
 
-## What it produces
+## ✨ Features
 
-| Feature | Detail |
+| Feature | Details |
 |---|---|
-| Stock footage | Real human footage from Pexels — HD landscape clips, no AI-generated imagery |
-| Voiceover | Groq PlayAI TTS — 18 English voices, natural prosody |
-| Captions | Word-highlight style (active word highlighted + underlined, others white on dark pill) |
-| Output | 1280×720 MP4 (YouTube-ready) + `.srt` subtitle file |
-| Music | Optional background track with auto-ducking (drops under speech, rises in pauses) |
+| 🎯 AI Scene Detection | Llama 3.3 70B analyzes full transcripts to find viral-worthy moments |
+| 🎙️ Whisper Transcription | `whisper-large-v3-turbo` — fast, accurate, timestamp-exact |
+| 📱 9:16 Vertical Output | Auto center-crop from any 16:9 source, 1080×1920 |
+| 🎨 5 Caption Presets | Bold Yellow, Hormozi Style, Minimal White, Cyber Neon, Red Impact |
+| 🔊 Sound Effects | Synthesized whoosh/impact SFX injected at clip transitions |
+| 🗂️ 8 Scene Categories | Funny, Action, Drama, Educational, Fights, Inspiration, Twists, Peaks |
+| ⚡ Free API Tier | Zero cost — all Groq models are on the free tier |
+| 🔒 Secrets-Safe | API key stored in Streamlit Secrets — never hardcoded |
 
 ---
 
-## APIs required (both free)
+## 🚀 Quickstart — Local Development
 
-| API | What it does | Get it |
-|---|---|---|
-| **Groq API** | TTS voiceover (PlayAI) + LLM keyword extraction + optional cloud Whisper | [console.groq.com](https://console.groq.com) — free tier |
-| **Pexels API** | Real stock video search & download | [pexels.com/api](https://www.pexels.com/api/) — free, 200 req/hr |
+### 1. Prerequisites
 
----
+#### Python
+Python **3.10 or higher** is required.
 
-## System prerequisites
-
-### 1 — FFmpeg (required)
-
-**macOS**
 ```bash
-brew install ffmpeg
+python --version   # should print 3.10.x, 3.11.x, or 3.12.x
 ```
 
-**Ubuntu / Debian**
+#### FFmpeg (required — must be installed at system level)
+
+**Ubuntu / Debian / WSL:**
 ```bash
 sudo apt update && sudo apt install -y ffmpeg
+ffmpeg -version   # confirm installation
 ```
 
-**Windows** — download a static build from [ffmpeg.org](https://ffmpeg.org/download.html)
-and add the `bin/` folder to your `PATH`.
-
-Verify:
+**macOS (Homebrew):**
 ```bash
-ffmpeg -version && ffprobe -version
+brew install ffmpeg
+ffmpeg -version
 ```
 
-### 2 — Python 3.10 – 3.12
+**Windows:**
+1. Download the latest build from https://ffmpeg.org/download.html
+2. Extract to `C:\ffmpeg`
+3. Add `C:\ffmpeg\bin` to your system `PATH`
+4. Open a new terminal and run `ffmpeg -version`
 
-Python 3.13+ is not yet supported by PyTorch (required by local Whisper fallback).
-
----
-
-## Local installation
+### 2. Clone the repository
 
 ```bash
-# 1. Clone
-git clone https://github.com/your-username/ytai.git
-cd ytai
+git clone https://github.com/your-username/shortscraftai.git
+cd shortscraftai
+```
 
-# 2. Virtual environment
-python -m venv venv
-source venv/bin/activate        # Windows: venv\Scripts\activate
+### 3. Create a virtual environment
 
-# 3. Install
+```bash
+python -m venv .venv
+
+# Activate:
+source .venv/bin/activate        # Linux / macOS
+.venv\Scripts\activate           # Windows PowerShell
+```
+
+### 4. Install Python dependencies
+
+```bash
+pip install --upgrade pip
 pip install -r requirements.txt
+```
 
-# 4. Secrets
+### 5. Add your Groq API key (local secrets)
+
+Create the directory and file:
+
+```bash
 mkdir -p .streamlit
-cat > .streamlit/secrets.toml << 'EOF'
-GROQ_API_KEY   = "gsk_your_groq_key_here"
-PEXELS_API_KEY = "your_pexels_key_here"
-EOF
+```
 
-# 5. Run
+Create `.streamlit/secrets.toml` with the following content:
+
+```toml
+# .streamlit/secrets.toml
+GROQ_API_KEY = "gsk_your_actual_groq_api_key_here"
+```
+
+> **⚠️ Important:** Add `.streamlit/secrets.toml` to your `.gitignore` — never commit API keys.
+
+```bash
+echo ".streamlit/secrets.toml" >> .gitignore
+```
+
+Get a **free** Groq API key at 👉 https://console.groq.com
+
+### 6. Run the app
+
+```bash
 streamlit run app.py
 ```
 
-App opens at `http://localhost:8501`.
+The app opens at `http://localhost:8501` in your browser.
 
 ---
 
-## Streamlit Community Cloud deployment
+## ☁️ Deploy to Streamlit Cloud
 
-1. Push the repo (with `app.py` and `requirements.txt` at root) to GitHub.
-2. Go to [share.streamlit.io](https://share.streamlit.io) → **New app**.
-3. Select repo, branch, `app.py` as entry point.
-4. Open **Settings → Secrets** and add:
-   ```toml
-   GROQ_API_KEY   = "gsk_your_groq_key_here"
-   PEXELS_API_KEY = "your_pexels_key_here"
-   ```
-5. Deploy.
+### Step 1 — Push your code to GitHub
 
-> **Note on size:** `openai-whisper` + `torch` ≈ 800 MB. Streamlit Community Cloud
-> has a ~1 GB limit. To stay under it, remove `openai-whisper` and `torch` from
-> `requirements.txt` — YTAi will use Groq Whisper (cloud) for transcription instead,
-> which is faster anyway.
+Make sure your repository does **not** contain `.streamlit/secrets.toml`.
+
+```bash
+git add app.py requirements.txt README.md .gitignore
+git commit -m "feat: initial ShortsCraft AI"
+git push origin main
+```
+
+### Step 2 — Create a new Streamlit Cloud app
+
+1. Go to **[share.streamlit.io](https://share.streamlit.io)** and sign in with GitHub.
+2. Click **"New app"**.
+3. Select your repository, branch (`main`), and set the main file path to `app.py`.
+4. Click **"Deploy"**.
+
+### Step 3 — Add GROQ_API_KEY to Streamlit Cloud Secrets
+
+> This is the most important step — the app will not work without it.
+
+1. In your Streamlit Cloud dashboard, find your deployed app.
+2. Click the **"⋮" (three-dot menu)** → **"Settings"**.
+3. Navigate to the **"Secrets"** tab.
+4. Paste the following into the secrets text area:
+
+```toml
+GROQ_API_KEY = "gsk_your_actual_groq_api_key_here"
+```
+
+5. Click **"Save"**.
+6. Your app will automatically restart and pick up the new secret.
+
+> Streamlit encrypts secrets at rest and injects them securely at runtime. They are never exposed in your code or logs.
 
 ---
 
-## How it works (the pipeline)
+## 🏗️ Project Structure
 
 ```
-Script text
-    │
-    ▼
-① Sentence splitting  ──────────────────────────────────── re / punctuation
-    │
-    ▼
-② AI keyword extraction  ───────────────────────────────── Groq LLM
-    │  "What if the Earth stopped spinning?" → "earth from space"
-    │
-    ▼
-③ Pexels stock clip search + download  ─────────────────── Pexels API (HD, landscape)
-    │
-    ▼
-④ Groq PlayAI TTS voiceover (per sentence)  ────────────── groq.audio.speech.create
-    │
-    ▼
-⑤ Word-level timestamps  ───────────────────────────────── Groq Whisper (or local / fallback)
-    │
-    ▼
-⑥ Per-frame render  ────────────────────────────────────── OpenCV filter + PIL caption burn
-    │  • Video colour filter (Cinematic Dark, Color Boost, …)
-    │  • Word-highlight captions (active word highlighted + underlined)
-    │
-    ▼
-⑦ Scene clip assembly  (FFmpeg mux: processed video + TTS audio)
-    │
-    ▼
-⑧ Crossfade concatenation  ─────────────────────────────── FFmpeg xfade filter
-    │
-    ▼
-⑨ Background music mix + auto-duck  ────────────────────── pydub / FFmpeg amix
-    │
-    ▼
-⑩ Final MP4 (1280×720, H.264/AAC) + SRT subtitles
+shortscraftai/
+├── app.py                  # Main Streamlit application (all logic)
+├── requirements.txt        # Python dependencies
+├── README.md               # This file
+└── .streamlit/
+    └── secrets.toml        # Local secrets — DO NOT commit this file
 ```
+
+The app uses `tempfile.gettempdir()` for intermediate files (raw clips, audio chunks, ASS subtitle files). All final Shorts are rendered in memory and served via Streamlit's download button — no permanent storage is required.
 
 ---
 
-## Project structure
+## 🧠 AI Models Used
 
-```
-ytai/
-├── app.py            # Full application — all logic + UI in one file
-├── requirements.txt  # Production Python packages
-└── README.md         # This file
-```
-
-`app.py` is split into clearly labelled modules:
-
-| Module | Responsibility |
-|---|---|
-| A — Script → Scenes | Sentence splitter + Groq LLM keyword extractor |
-| B — Pexels | HD stock clip search + stream download |
-| C — Groq TTS | PlayAI voiceover generation |
-| D — Captions | Word timestamps (Groq Whisper → local Whisper → fallback) + SRT |
-| E — Frame rendering | PIL word-highlight caption burn (Fliki-style) |
-| F — Video filters | OpenCV per-frame colour grades |
-| G — Clip assembly | Per-scene: trim clip → burn captions → mux TTS |
-| H — Final assembly | FFmpeg xfade concat + BGM auto-duck |
-| UI | Streamlit 3-tab interface: Create / Settings / Output |
-
----
-
-## Caption styles
-
-| Style | Active word | Background |
+| Task | Model | Notes |
 |---|---|---|
-| **Fliki Classic** | Yellow, underlined | Black pill, 82% opacity |
-| Neon Pop | Bright green, underlined | Black pill, 76% opacity |
-| Cinematic White | Amber, no underline | Black pill, lower-third |
-| Bold Impact | Red, underlined | Near-opaque black pill |
+| Audio transcription | `whisper-large-v3-turbo` | Chunked for long videos (5-min chunks) |
+| Scene analysis | `llama-3.3-70b-versatile` | Primary model |
+| Scene analysis fallback | `llama-3.1-8b-instant` | Automatic fallback on rate limit |
+
+All models are on Groq's **free tier** — no billing required.
 
 ---
 
-## TTS voices (Groq PlayAI)
+## 🎨 Caption Presets
 
-Recommended for documentary / YouTube narration:
-
-- **Chip** — clear, authoritative, neutral American
-- **Thunder** — deep, dramatic (great for "What If" style videos)
-- **Atlas** — calm and measured
-- **Briggs** — warm, storytelling tone
-- **Ethan** — upbeat, conversational
-
-All 18 available voices are selectable in the Settings tab.
+| Preset | Font | Color | Style |
+|---|---|---|---|
+| Bold Yellow Highlight | Impact | Yellow on black | Classic meme-style |
+| Hormozi Style | Arial Bold | White on black | Alex Hormozi signature thick text |
+| Minimal White | Helvetica | White outline | Clean and professional |
+| Cyber Neon | Courier | Cyan / Magenta | Futuristic vibe |
+| Red Impact | Impact | Red on white | High-energy alert |
 
 ---
 
-## Troubleshooting
+## 🔊 Sound Effects
 
-| Problem | Fix |
+Sound effects are **synthesized via FFmpeg** (no external audio files needed):
+
+| Effect | Used At |
 |---|---|
-| `GROQ_API_KEY not found` | Add to `.streamlit/secrets.toml` or Streamlit Cloud Secrets |
-| `PEXELS_API_KEY not found` | Same — or enter in the Create tab key fields |
-| Pexels returns no results | Try a broader keyword; Pexels has 1M+ videos |
-| TTS returns silence | Check your Groq key has TTS access (PlayAI model) |
-| Clip assembly is slow | Normal — each scene runs FFmpeg trim + frame pipeline; ~8–20s per scene |
-| `ffmpeg not found` | Install FFmpeg and confirm it's on your `PATH` |
-| Video is black frames only | Stock clip download failed; check network and Pexels quota |
-| Local Whisper very slow | Switch to Groq Whisper (cloud) in Settings, or use `tiny` model |
+| Whoosh | Clip intro (0s) |
+| Impact Boom | Clip outro (last 0.5s) |
 
 ---
 
-## Groq model note
+## ⚠️ Troubleshooting
 
-YTAi uses:
-- **`openai/gpt-oss-120b`** for LLM keyword extraction (Groq's current recommended model — replaced the deprecated `llama-3.3-70b-versatile` on August 16, 2026)
-- **`playai-tts`** for TTS voiceover
-- **`whisper-large-v3`** for cloud transcription
+### "FFmpeg not found"
+Install FFmpeg at the **system level** — `pip install ffmpeg` does not install the binary. See the [prerequisites](#prerequisites) section.
 
-Both model names are single constants at the top of `app.py` and trivial to swap.
+### "GROQ_API_KEY not found"
+For local dev: ensure `.streamlit/secrets.toml` exists and contains your key.  
+For Streamlit Cloud: add the key via **Settings → Secrets** (see [Step 3](#step-3--add-groq_api_key-to-streamlit-cloud-secrets)).
+
+### "Video download failed"
+- Verify the YouTube URL is public (not age-gated or private).
+- Update yt-dlp: `pip install --upgrade yt-dlp`
+
+### "Scene detection returned fallback clips"
+- The Groq model returned invalid JSON or was rate-limited.
+- The app automatically falls back to evenly-distributed 30s clips.
+- Try again — Groq free tier has per-minute limits that reset quickly.
+
+### Subtitle burn errors on Windows
+FFmpeg ASS filter path handling on Windows can occasionally conflict with drive letters. The app gracefully falls back to the un-captioned cropped clip in this case. Running inside WSL avoids this entirely.
 
 ---
 
-## License
+## 📄 License
 
-Free for personal and educational use. Pexels videos are royalty-free for commercial use
-(see [pexels.com/license](https://www.pexels.com/license/)). Always attribute photographers
-when required.
+MIT License — see `LICENSE` for details.
+
+---
+
+## 🙌 Credits
+
+Built with:
+- [Streamlit](https://streamlit.io) — UI framework
+- [Groq](https://groq.com) — LLM inference (Whisper + Llama)
+- [yt-dlp](https://github.com/yt-dlp/yt-dlp) — YouTube downloader
+- [FFmpeg](https://ffmpeg.org) — Video processing engine
+- [MoviePy](https://zulko.github.io/moviepy/) — Python video utilities
